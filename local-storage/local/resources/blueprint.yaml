@@ -1,0 +1,208 @@
+###########################################################
+# This Blueprint installs a LAMP stack on a single VM in
+# an Openstack Cloud.
+#
+# This implementation does not install a cloudify agent
+# on the VM, but instead uses the fabric plugin to
+# run commands remotely
+#
+# Limitations:
+#   - agent host must be ubuntu (12.04 and above)
+#   - agent host must allow sudo commands for the given user
+##############################################################
+
+tosca_definitions_version: cloudify_dsl_1_0
+
+imports:
+  - http://www.getcloudify.org/spec/cloudify/3.1/types.yaml
+  - http://www.getcloudify.org/spec/fabric-plugin/1.1/plugin.yaml
+  - http://www.getcloudify.org/spec/openstack-plugin/1.1/plugin.yaml
+
+
+#####################################################################################
+# inputs section allows the user to use same
+# blueprint for creating different deployments, each one
+# with its own parameters.
+# to specify deployment inputs run:
+#   - cfy deployments create -b <blueprint_id> -d <deployment_id> -i inputs.json
+#####################################################################################
+
+inputs:
+
+  webserver_port:
+    description: >
+      The HTTP web server port.
+    default: 8000
+
+  host_ip:
+    default: localhost
+
+  user:
+    description: >
+      Username
+
+  password:
+    description: >
+      Password
+
+node_types:
+
+  ##################################
+  # A mysql database.
+  # configurable properties:
+  #   - root_password
+  ##################################
+
+  lamp.nodes.MySQL:
+    derived_from: cloudify.nodes.DBMS
+    properties:
+      root_password:
+        description: >
+          Root password for access to admin operations
+        default: mysql
+
+node_templates:
+
+  #########################################################
+  # We use the openstack server.
+  # Note we are telling cloudify not to install an agent.
+  #########################################################
+
+
+  linux:
+    type: cloudify.nodes.Compute
+    properties:
+      ip: { get_input: host_ip }
+      install_agent: false
+
+  mysql:
+    type: lamp.nodes.MySQL
+    properties:
+      root_password: mysql
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_task
+          inputs:
+            tasks_file: tasks/mysql.py
+            task_name: install
+            fabric_env: 
+              host_string: { get_input: host_ip }
+              user: { get_input: user }
+              password: { get_input: password }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_task
+          inputs:
+            tasks_file: tasks/mysql.py
+            task_name: start
+            fabric_env: 
+              host_string: { get_input: host_ip }
+              user: { get_input: user }
+              password: { get_input: password }
+        stop:
+          implementation: fabric.fabric_plugin.tasks.run_task
+          inputs:
+            tasks_file: tasks/mysql.py
+            task_name: stop
+            fabric_env: 
+              host_string: { get_input: host_ip }
+              user: { get_input: user }
+              password: { get_input: password }
+        delete:
+          implementation: fabric.fabric_plugin.tasks.run_task
+          inputs:
+            tasks_file: tasks/mysql.py
+            task_name: uninstall
+            fabric_env: 
+              host_string: { get_input: host_ip }
+              user: { get_input: user }
+              password: { get_input: password }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: linux
+
+  apache_php:
+    type: cloudify.nodes.WebServer
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_task
+          inputs:
+            tasks_file: tasks/apache.py
+            task_name: install
+            fabric_env: 
+              host_string: { get_input: host_ip }
+              user: { get_input: user }
+              password: { get_input: password }
+        configure:
+          implementation: fabric.fabric_plugin.tasks.run_task
+          inputs:
+            tasks_file: tasks/apache.py
+            task_name: configure_php
+            fabric_env: 
+              host_string: { get_input: host_ip }
+              user: { get_input: user }
+              password: { get_input: password }
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_task
+          inputs:
+            tasks_file: tasks/apache.py
+            task_name: start
+            fabric_env: 
+              host_string: { get_input: host_ip }
+              user: { get_input: user }
+              password: { get_input: password }
+        stop:
+          implementation: fabric.fabric_plugin.tasks.run_task
+          inputs:
+            tasks_file: tasks/apache.py
+            task_name: stop
+            fabric_env: 
+              host_string: { get_input: host_ip }
+              user: { get_input: user }
+              password: { get_input: password }
+        delete:
+          implementation: fabric.fabric_plugin.tasks.run_task
+          inputs:
+            tasks_file: tasks/apache.py
+            task_name: uninstall
+            fabric_env: 
+              host_string: { get_input: host_ip }
+              user: { get_input: user }
+              password: { get_input: password }
+    relationships:
+      - type: cloudify.relationships.contained_in
+        target: linux
+      - type: cloudify.relationships.depends_on
+        target: mysql
+
+  # ###########################################################
+  # # A floating ip to expose our host to the outside world.
+  # #
+  # # This floating ip will be attached to the host
+  # ###########################################################
+
+  # apache_floatingip:
+  #   type: cloudify.openstack.nodes.FloatingIP
+
+  # ###########################################################
+  # # A security group to enable access to the host on port 80
+  # #
+  # # This security group will be attached to the host
+  # ###########################################################
+
+  # apache_security_group:
+  #   type: cloudify.openstack.nodes.SecurityGroup
+  #   properties:
+  #     security_group:
+  #       name: apache_security_group
+  #     rules:
+  #       - remote_ip_prefix: 0.0.0.0/0
+  #         port: 80
+
+outputs:
+  endpoint:
+    description: PHP endpoint
+    value:
+      ip_address: 0.0.0.0
+      context_path: /info.php

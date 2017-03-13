@@ -1,0 +1,1 @@
+{"relationships": [{"target_name": "linux", "type": "cloudify.relationships.contained_in", "target_id": "linux_o2f5ya"}], "name": "mysql", "runtime_properties": {}, "state": "started", "node_id": "mysql", "version": 7, "host_id": "linux_o2f5ya", "id": "mysql_grlrtv"}

@@ -1,0 +1,1 @@
+{"relationships": [{"target_name": "linux", "type": "cloudify.relationships.contained_in", "target_id": "linux_o2f5ya"}, {"target_name": "mysql", "type": "cloudify.relationships.depends_on", "target_id": "mysql_grlrtv"}], "name": "apache_php", "runtime_properties": {}, "state": "started", "node_id": "apache_php", "version": 7, "host_id": "linux_o2f5ya", "id": "apache_php_uzi00z"}
